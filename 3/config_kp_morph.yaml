@@ -1,0 +1,68 @@
+manual_seed: 2020
+GPUs: [0]
+base_dir_prev: KpResidualUNet3D
+description: morph
+
+# model configuration
+model:
+  name: ResidualUNet3D
+  in_channels: 1
+  out_channels: 17
+  layer_order: gcr
+  f_maps: [16, 32, 64, 128]
+  num_groups: 16
+  is_segmentation: false
+  passing: false
+Morphmodel:
+  name: VxmDense
+  inshape: [128, 176, 128]
+  nb_unet_features: [[16, 32, 32, 32],
+                     [32, 32, 32, 32, 32, 16, 16]]
+  bidir: false
+
+# trainer configuration
+trainer:
+  trainer_name: TrainerKeyPointMorph
+  validate_after_iters: 100
+  log_after_iters: 10
+  epochs: 200
+  eval_score_higher_is_better: false
+  amp: false
+
+# loss function configuration
+loss:
+  name: KeyPointBCELoss
+Morphloss:
+  name: NCC
+
+optimizer:
+  learning_rate: 0.0001
+  weight_decay: 0.0001
+
+# evaluation metric
+eval_metric:
+  name: PointDistance
+  distance_thre: 5
+
+# learning rate scheduler configuration
+# lr_scheduler:
+#   name: ReduceLROnPlateau
+#   mode: min
+#   factor: 0.5
+#   patience: 5
+
+lr_scheduler:
+  name: StepLR
+  step_size: 5
+  gamma: 0.8
+
+# data loaders configuration
+loaders:
+  csv_path: DATA/fold.csv
+  data_path: DATA/resize/norm/
+  val_fold: 1
+  batch_size: 1
+  num_workers: 8
+  manual_seed: 2020
+  dist_thr: 3
+  atlas: true
