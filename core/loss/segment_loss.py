@@ -100,7 +100,7 @@ class _AbstractDiceLoss(nn.Module):
 
     def forward(self, input, target):
         # get probabilities from logits
-        input = self.normalization(input)
+        # input = self.normalization(input)
 
         # compute per channel Dice coefficient
         per_channel_dice = self.dice(input, target, weight=self.weight)

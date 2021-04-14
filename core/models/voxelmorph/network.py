@@ -56,13 +56,15 @@ class Unet(nn.Module):
         else:
             self.enc_nf, self.dec_nf = nb_features
 
-        self.upsample = nn.Upsample(scale_factor=2, mode='nearest')
 
         # configure encoder (down-sampling path)
         prev_nf = 2
         self.downarm = nn.ModuleList()
+        self.fusions = nn.ModuleList()
+        self.fusions.append(nn.Conv3d(2 * 2, 2, kernel_size=1))
         for nf in self.enc_nf:
             self.downarm.append(ConvBlock(ndims, prev_nf, nf, stride=2))
+            self.fusions.append(nn.Conv3d(nf * 2, nf, kernel_size=1))
             prev_nf = nf
 
         # configure decoder (up-sampling path)
@@ -80,21 +82,26 @@ class Unet(nn.Module):
             self.extras.append(ConvBlock(ndims, prev_nf, nf, stride=1))
             prev_nf = nf
 
-    def forward(self, x):
+    def forward(self, x, x1):
 
-        # get encoder activations
         x_enc = [x]
         for layer in self.downarm:
             x_enc.append(layer(x_enc[-1]))
 
-        # conv, upsample, concatenate series
-        x = x_enc.pop()
+        x1_enc = [x1]
+        for layer in self.downarm:
+            x1_enc.append(layer(x1_enc[-1]))
+
+        feature_enc = []
+        for i, layer in enumerate(self.fusions):
+            feature_enc.append(layer(torch.cat([x_enc[i], x1_enc[i]], 1)))
+
+        x = feature_enc.pop()
         for layer in self.uparm:
             x = layer(x)
-            x = self.upsample(x)
-            x = torch.cat([x, x_enc.pop()], dim=1)
+            x = F.interpolate(x, scale_factor=2, mode='trilinear', align_corners=True)
+            x = torch.cat([x, feature_enc.pop()], dim=1)
 
-        # extra convs at full resolution
         for layer in self.extras:
             x = layer(x)
 
@@ -174,7 +181,7 @@ class VxmDense(nn.Module):
         # configure transformer
         self.transformer = layers.SpatialTransformer(inshape)
 
-    def forward(self, source, target, registration=False):
+    def forward(self, source, source_label, target, target_label, registration=False):
         '''
         Parameters:
             source: Source image tensor.
@@ -183,8 +190,9 @@ class VxmDense(nn.Module):
         '''
 
         # concatenate inputs and propagate unet
-        x = torch.cat([source, target], dim=1)
-        x = self.unet_model(x)
+        source_mix = torch.cat([source, source_label], dim=1)
+        target_mix = torch.cat([target, target_label], dim=1)
+        x = self.unet_model(source_mix, target_mix)
 
         # transform into flow field
         flow_field = self.flow(x)
@@ -242,6 +250,6 @@ if __name__ == '__main__':
     a = torch.zeros(2, 1, 64, 64, 64)
     b = torch.zeros(2, 1, 64, 64, 64)
     model = VxmDense((64, 64, 64))
-    y_source, preint_flow = model(a, b,True)
+    y_source, preint_flow = model(a, b, True)
     print(y_source.shape)
     print(preint_flow.shape)
